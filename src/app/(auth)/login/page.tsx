@@ -8,6 +8,7 @@ import Link from "next/link";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase"; // Import the auth instance directly
 import { LayoutDashboard } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function LoginPage() {
     const { signInWithGoogle } = useAuth();
@@ -63,6 +64,9 @@ export default function LoginPage() {
                 <div className="flex flex-col items-center gap-3 text-center">
                     <div className="rounded-full bg-primary/10 p-3">
                         <LayoutDashboard className="h-10 w-10 md:h-8 md:w-8 text-primary" />
+                        <div className="absolute top-4 right-4">
+                            <ThemeToggle />
+                        </div>
                     </div>
                     <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Welcome back</h2>
                     <p className="text-sm text-muted-foreground px-4">

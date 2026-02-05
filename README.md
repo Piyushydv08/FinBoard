@@ -8,6 +8,11 @@
 
 A comprehensive, customizable financial dashboard that aggregates real-time market data from multiple APIs into a single, intuitive interface. Built as a web development internship assignment to demonstrate full-stack development skills with modern technologies.
 
+## 🌐 Live Demo
+
+**https://finboard-psi-seven.vercel.app/**
+
+
 ## 📋 Table of Contents
 
 - [Overview](#-overview)
@@ -72,7 +77,7 @@ FinBoard is a responsive web application that allows users to create personalize
 
 ### 📱 User Interface
 - **Sidebar Navigation**: Collapsible sidebar with user profile
-- **Dark/Light Mode**: Support for both themes (via Tailwind)
+- **Dark/Light Mode**: Toggle between themes using a theme toggle button in the top-right corner (via Tailwind CSS with CSS variables for seamless transitions)
 - **Loading States**: Skeleton loaders and progress indicators
 - **Error Handling**: Graceful error states with retry options
 - **Toast Notifications**: User feedback for actions
@@ -139,7 +144,7 @@ FinBoard is a responsive web application that allows users to create personalize
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/finboard.git
+   git clone https://github.com/Piyushydv08/FinBoard.git
    cd finboard
    ```
 
@@ -168,9 +173,9 @@ FinBoard is a responsive web application that allows users to create personalize
    NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 
    # Optional: Pre-configured API keys for demo
-   NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
-   NEXT_PUBLIC_FINNHUB_API_KEY=your_finnhub_key
-   NEXT_PUBLIC_INDIANAPI_API_KEY=your_indianapi_key
+   ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
+   FINNHUB_API_KEY=your_finnhub_key
+   INDIANAPI_API_KEY=your_indianapi_key
    ```
 
 5. **Run the development server**
@@ -468,7 +473,7 @@ interface ApiKeyDocument {
 interface WidgetConfig {
   id: string; // UUID
   title: string;
-  type: 'card' | 'chart' | 'table' | 'indianapi';
+  type: 'card' | 'chart' | 'table';
   apiEndpoint: string;
   selectedApiKeyId?: string;
   refreshInterval: number; // seconds
@@ -647,10 +652,8 @@ SOFTWARE.
 ## 📞 Contact & Support
 
 For issues, questions, or contributions:
-- **GitHub Issues**: [Create an issue](https://github.com/yourusername/finboard/issues)
-- **Email**: your.email@example.com
-- **Documentation**: [Project Wiki](https://github.com/yourusername/finboard/wiki)
-
+- **GitHub Issues**: [Create an issue](https://github.com/Piyushydv08/FinBoard/issues)
+- **Email**: piyushydv011@gmail.com
 ---
 
 **Built with ❤️ for the web development internship assignment**

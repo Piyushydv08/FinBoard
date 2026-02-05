@@ -2,11 +2,12 @@
 
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
-import { LogOut, Settings, LayoutDashboard, Menu, X } from "lucide-react";
+import { LogOut, Settings, LayoutDashboard, Menu, X, Sun, Moon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     const { logout, user } = useAuth();
@@ -18,7 +19,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex h-screen bg-muted/20">
                 {/* Mobile Sidebar Overlay */}
                 {sidebarOpen && (
-                    <div 
+                    <div
                         className="fixed inset-0 z-40 bg-black/50 md:hidden"
                         onClick={() => setSidebarOpen(false)}
                     />
@@ -67,7 +68,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </Link>
                         </nav>
                     </div>
-                    <div className="mt-auto p-4 border-t">
+                    <div className="mt-auto p-4 border-t space-y-2">
+                        {/* Theme Toggle in Sidebar */}
+                        <div className="flex items-center justify-center mb-2">
+                            <ThemeToggle />
+                        </div>
+                        
                         <div className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground">
                             <div className="flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full bg-primary/10 text-sm md:text-xs font-bold text-primary">
                                 {user?.email?.charAt(0).toUpperCase()}
@@ -79,7 +85,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </div>
                         <button
                             onClick={() => logout()}
-                            className="flex w-full items-center gap-3 rounded-lg px-3 py-3 md:py-2 text-sm font-medium text-muted-foreground transition-all hover:text-primary mt-2"
+                            className="flex w-full items-center gap-3 rounded-lg px-3 py-3 md:py-2 text-sm font-medium text-muted-foreground transition-all hover:text-primary"
                         >
                             <LogOut className="h-5 w-5 md:h-4 md:w-4" />
                             Log Out
@@ -101,6 +107,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <span>FinBoard</span>
                         </Link>
                         <div className="flex-1" />
+                        
+                        {/* Theme Toggle in Header (for mobile) */}
+                        <div className="md:hidden">
+                            <ThemeToggle />
+                        </div>
+                        
                         <div className="md:hidden flex items-center gap-3">
                             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                                 {user?.email?.charAt(0).toUpperCase()}

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import { app, auth } from "@/lib/firebase";
 import { LayoutDashboard } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function SignupPage() {
     const { signInWithGoogle } = useAuth();
@@ -59,6 +60,9 @@ export default function SignupPage() {
                 <div className="flex flex-col items-center gap-3 text-center">
                     <div className="rounded-full bg-primary/10 p-3">
                         <LayoutDashboard className="h-10 w-10 md:h-8 md:w-8 text-primary" />
+                        <div className="absolute top-4 right-4">
+                            <ThemeToggle />
+                        </div>
                     </div>
                     <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Create an account</h2>
                     <p className="text-sm text-muted-foreground px-4">

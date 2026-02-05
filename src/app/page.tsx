@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { ArrowRight, LayoutDashboard, Shield } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function Home() {
     return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8 text-center">
+        <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8 text-center relative">
+            {/* Theme Toggle in top right */}
+            <div className="absolute top-4 right-4">
+                <ThemeToggle />
+            </div>
+
             <div className="flex max-w-4xl flex-col items-center gap-8">
                 <div className="rounded-full bg-primary/10 p-4 ring-1 ring-primary/20">
                     <LayoutDashboard className="h-12 w-12 md:h-16 md:w-16 text-primary" />
