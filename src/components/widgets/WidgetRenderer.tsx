@@ -25,33 +25,38 @@ export default function WidgetRenderer({ widget, className, onDelete }: { widget
 
     // Check widget type based on API endpoint or selected key
     const getWidgetType = () => {
-        // Check by API endpoint
-        if (widget.apiEndpoint?.includes("alphavantage.co")) {
+    // Check if it's an IndianAPI widget by type or dataMapping
+    if (widget.dataMapping?.indianAPIWidgetType) {
+        return "indianapi";
+    }
+    
+    // Check by API endpoint
+    if (widget.apiEndpoint?.includes("alphavantage.co")) {
+        return "alphavantage";
+    }
+    if (widget.apiEndpoint?.includes("finnhub.io")) {
+        return "finnhub";
+    }
+    if (widget.apiEndpoint?.includes("indianapi.in")) {
+        return "indianapi";
+    }
+    
+    // Check by selected API key provider
+    const selectedKey = keys?.find(k => k.id === widget.selectedApiKeyId);
+    if (selectedKey) {
+        if (selectedKey.provider === "Alpha Vantage") {
             return "alphavantage";
         }
-        if (widget.apiEndpoint?.includes("finnhub.io")) {
+        if (selectedKey.provider === "Finnhub") {
             return "finnhub";
         }
-        if (widget.apiEndpoint?.includes("indianapi.in")) {
+        if (selectedKey.provider === "IndianAPI") {
             return "indianapi";
         }
-        
-        // Check by selected API key provider
-        const selectedKey = keys?.find(k => k.id === widget.selectedApiKeyId);
-        if (selectedKey) {
-            if (selectedKey.provider === "Alpha Vantage") {
-                return "alphavantage";
-            }
-            if (selectedKey.provider === "Finnhub") {
-                return "finnhub";
-            }
-            if (selectedKey.provider === "IndianAPI") {
-                return "indianapi";
-            }
-        }
-        
-        return "generic";
-    };
+    }
+    
+    return "generic";
+};
 
     const widgetType = getWidgetType();
 
@@ -119,7 +124,13 @@ export default function WidgetRenderer({ widget, className, onDelete }: { widget
             );
         }
         
-        return <IndianAPIWidget widget={widget} className={className} />;
+        return (
+            <IndianAPIWidget 
+                widget={widget} 
+                className={className}
+                widgetType={widget.dataMapping?.indianAPIWidgetType} // Pass the specific widget type
+            />
+        );
     }
 
     // Original logic for other widgets

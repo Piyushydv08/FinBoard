@@ -3,8 +3,9 @@
 import { useState } from "react";
 import IndianAPIWidget from "./IndianAPIWidget";
 import IndianAPIWidgetSelector from "./IndianAPIWidgetSelector";
-import { ChevronLeft, ChevronRight, Eye, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, X, Loader2, AlertCircle , RefreshCw} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 
 interface IndianAPIWidgetPreviewProps {
     apiEndpoint: string;
@@ -23,6 +24,59 @@ export default function IndianAPIWidgetPreview({
     const [selectedWidgets, setSelectedWidgets] = useState<Record<string, any>>({});
     const [currentPreview, setCurrentPreview] = useState<string | null>(null);
 
+    // Fetch API data once for all widgets
+    const { data: apiData, isLoading, error, refetch, isRefetching } = useQuery({
+        queryKey: ["indianapi-preview", apiEndpoint],
+        queryFn: async () => {
+            let apiKeyValue = "";
+            let fetchUrl = apiEndpoint;
+
+            // Try to extract API key from URL
+            try {
+                const urlObj = new URL(fetchUrl);
+                const urlKey = urlObj.searchParams.get('apikey') || urlObj.searchParams.get('api_key') || urlObj.searchParams.get('key');
+                if (urlKey) apiKeyValue = urlKey;
+            } catch (e) {
+                const match = fetchUrl.match(/[?&](?:apikey|api_key|key)=([^&]+)/);
+                if (match) apiKeyValue = match[1];
+            }
+
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+
+            if (apiKeyValue) {
+                headers['X-Api-Key'] = apiKeyValue;
+            }
+
+            // Clean the URL
+            try {
+                const urlObj = new URL(fetchUrl);
+                urlObj.searchParams.delete('apikey');
+                urlObj.searchParams.delete('api_key');
+                urlObj.searchParams.delete('key');
+                fetchUrl = urlObj.toString();
+            } catch (e) {
+                fetchUrl = fetchUrl.replace(/[?&](apikey|api_key|key)=[^&]+/, '');
+            }
+
+            const res = await fetch(fetchUrl, { 
+                headers,
+                method: 'GET'
+            });
+            
+            const responseText = await res.text();
+            
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${responseText || 'Unknown error'}`);
+            }
+            
+            return JSON.parse(responseText);
+        },
+        refetchInterval: 300 * 1000,
+    });
+
     const handleWidgetSelect = (widgetId: string, config: any) => {
         setSelectedWidgets(prev => ({
             ...prev,
@@ -36,7 +90,7 @@ export default function IndianAPIWidgetPreview({
     };
 
     const handleAddWidgets = () => {
-        const widgets = Object.entries(selectedWidgets).map(([id, config]) => ({
+        const widgets = Object.values(selectedWidgets).map((config) => ({
             type: config.widgetType,
             config
         }));
@@ -54,6 +108,55 @@ export default function IndianAPIWidgetPreview({
         { id: "risk-meter", type: "riskMeter", title: "Risk Assessment" },
         { id: "shareholding", type: "shareholding", title: "Shareholding Pattern" }
     ];
+
+    // Loading state
+    if (step === "preview" && isLoading) {
+        return (
+            <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-card rounded-lg border shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                    <div className="flex items-center justify-between border-b px-6 py-4 bg-muted/40">
+                        <div>
+                            <h2 className="text-lg font-semibold">Widget Preview</h2>
+                            <p className="text-sm text-muted-foreground">Loading data...</p>
+                        </div>
+                        <button onClick={onClose} className="p-1 hover:bg-muted rounded">
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+                    <div className="flex-1 flex items-center justify-center">
+                        <Loader2 className="animate-spin h-8 w-8 text-muted-foreground" />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Error state
+    if (step === "preview" && error) {
+        return (
+            <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-card rounded-lg border shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                    <div className="flex items-center justify-between border-b px-6 py-4 bg-muted/40">
+                        <div>
+                            <h2 className="text-lg font-semibold">Widget Preview</h2>
+                            <p className="text-sm text-muted-foreground">Error loading data</p>
+                        </div>
+                        <button onClick={onClose} className="p-1 hover:bg-muted rounded">
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+                    <div className="flex-1 flex flex-col items-center justify-center p-6">
+                        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+                        <p className="text-sm font-medium text-destructive mb-2">Unable to load data</p>
+                        <p className="text-sm text-muted-foreground text-center mb-4">{error.message}</p>
+                        <button onClick={() => refetch()} className="px-4 py-2 text-sm font-medium bg-primary text-white rounded hover:bg-primary/90">
+                            Retry
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -142,7 +245,7 @@ export default function IndianAPIWidgetPreview({
                         </div>
                     ) : (
                         <div className="max-w-4xl mx-auto">
-                            {currentPreview && (
+                            {currentPreview && apiData && (
                                 <div className="space-y-6">
                                     <div className="flex items-center justify-between">
                                         <div>
@@ -154,6 +257,15 @@ export default function IndianAPIWidgetPreview({
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={() => refetch()} 
+                                                className={cn(
+                                                    "text-muted-foreground hover:text-primary transition-all", 
+                                                    isRefetching ? "animate-spin" : ""
+                                                )}
+                                            >
+                                                <RefreshCw className="h-4 w-4" />
+                                            </button>
                                             <span className="text-xs px-2 py-1 bg-orange-500/10 text-orange-600 rounded">
                                                 IndianAPI
                                             </span>
@@ -170,9 +282,10 @@ export default function IndianAPIWidgetPreview({
                                                 apiEndpoint,
                                                 refreshInterval: 300,
                                                 dataMapping: {},
-                                                config: selectedWidgets[currentPreview]
+                                                config: selectedWidgets[currentPreview] || {}
                                             }}
                                             widgetType={selectedWidgets[currentPreview]?.widgetType}
+                                            data={apiData} // Pass the pre-fetched data
                                             className="h-full"
                                         />
                                     </div>

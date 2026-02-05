@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
-import { app } from "@/lib/firebase";
+import { app, auth } from "@/lib/firebase";
 import { LayoutDashboard } from "lucide-react";
 
 export default function SignupPage() {
@@ -17,19 +17,41 @@ export default function SignupPage() {
     const [loading, setLoading] = useState(false);
 
     const handleEmailSignup = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError("");
-        try {
-            const auth = getAuth(app);
-            await createUserWithEmailAndPassword(auth, email, password);
-            router.push("/dashboard");
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    
+    try {
+      // Use the imported auth instance directly
+      await createUserWithEmailAndPassword(auth, email, password);
+      router.push("/dashboard");
+    } catch (err: any) {
+      console.error("Signup error:", err);
+      
+      // Better error messages
+      switch (err.code) {
+        case "auth/email-already-in-use":
+          setError("An account already exists with this email");
+          break;
+        case "auth/invalid-email":
+          setError("Invalid email address");
+          break;
+        case "auth/operation-not-allowed":
+          setError("Email/password accounts are not enabled. Contact support");
+          break;
+        case "auth/weak-password":
+          setError("Password is too weak. Use at least 6 characters");
+          break;
+        case "auth/network-request-failed":
+          setError("Network error. Please check your connection");
+          break;
+        default:
+          setError("Failed to create account. Please try again");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
     return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-muted/50 p-4 md:p-8">

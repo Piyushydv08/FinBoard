@@ -9,7 +9,6 @@ import { Loader2, TrendingUp, TrendingDown, RefreshCw, AlertCircle, Building, Us
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { getApiKeys } from "@/lib/firestore/apiKeys";
-import { buildRequest } from "@/lib/api-utils";
 import { useState } from "react";
 import { format } from "date-fns";
 
@@ -17,6 +16,7 @@ interface IndianAPIWidgetProps {
   widget: any;
   className?: string;
   widgetType?: string;
+  data?: any; // Add this line to accept pre-fetched data
 }
 
 interface IndianAPIWidgetConfig {
@@ -69,11 +69,31 @@ interface FinancialMetrics {
   cashFlowFinancing: number;
 }
 
-export default function IndianAPIWidget({ widget, className, widgetType }: IndianAPIWidgetProps) {
+interface NewsItem {
+  id: number;
+  headline: string;
+  summary: string;
+  date: string;
+  source?: string;
+  url?: string;
+}
+
+interface AnalystRating {
+  name: string;
+  value: number;
+  color: string;
+  ratingValue: number;
+}
+
+export default function IndianAPIWidget({ widget, className, widgetType, data: propData }: IndianAPIWidgetProps) {
   const { user } = useAuth();
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   
-  const config: IndianAPIWidgetConfig = widgetType || widget.config?.widgetType || "priceCard";
+  // Get the widget type to render
+  const widgetTypeToRender = widgetType 
+    || widget.dataMapping?.indianAPIWidgetType 
+    || widget.config?.widgetType 
+    || "priceCard";
   
   // Parse company name from API endpoint
   const getCompanyNameFromUrl = (url: string) => {
@@ -81,11 +101,11 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
     return nameMatch ? decodeURIComponent(nameMatch[1]) : "Unknown";
   };
 
-  // Fetch API keys
+  // Fetch API keys (only if we don't have pre-fetched data)
   const { data: keys } = useQuery({
     queryKey: ["apiKeys", user?.uid],
     queryFn: async () => user ? getApiKeys(user.uid) : [],
-    enabled: !!user,
+    enabled: !!user && !propData, // Only fetch keys if we don't have pre-fetched data
     staleTime: 1000 * 60 * 5,
   });
 
@@ -95,8 +115,8 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
     
     return data.stockTechnicalData.map((item: any) => ({
       days: item.days,
-      bsePrice: parseFloat(item.bsePrice),
-      nsePrice: parseFloat(item.nsePrice)
+      bsePrice: parseFloat(item.bsePrice) || 0,
+      nsePrice: parseFloat(item.nsePrice) || 0
     })).sort((a: TechnicalDataPoint, b: TechnicalDataPoint) => a.days - b.days);
   };
 
@@ -107,12 +127,12 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
     return data.peerCompanyList.map((peer: any) => ({
       name: peer.companyName,
       ticker: peer.tickerId,
-      price: parseFloat(peer.price),
-      change: parseFloat(peer.percentChange),
-      marketCap: parseFloat(peer.marketCap),
-      peRatio: parseFloat(peer.priceToEarningsValueRatio),
-      pbRatio: parseFloat(peer.priceToBookValueRatio),
-      rating: peer.overallRating
+      price: parseFloat(peer.price) || 0,
+      change: parseFloat(peer.percentChange) || 0,
+      marketCap: parseFloat(peer.marketCap) || 0,
+      peRatio: parseFloat(peer.priceToEarningsValueRatio) || 0,
+      pbRatio: parseFloat(peer.priceToBookValueRatio) || 0,
+      rating: peer.overallRating || "Neutral"
     }));
   };
 
@@ -127,11 +147,11 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
     
     const getValue = (array: FinancialItem[], key: string): number => {
       const item = array.find((item: FinancialItem) => item.key === key);
-      return item ? parseFloat(item.value) : 0;
+      return item ? parseFloat(item.value) || 0 : 0;
     };
 
     return {
-      revenue: getValue(incomeStatement, "TotalRevenue"),
+      revenue: getValue(incomeStatement, "TotalRevenue") || getValue(incomeStatement, "Revenue"),
       netIncome: getValue(incomeStatement, "NetIncome"),
       eps: getValue(incomeStatement, "DilutedEPSExcludingExtraOrdItems"),
       grossProfit: getValue(incomeStatement, "GrossProfit"),
@@ -147,94 +167,166 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
 
   // Process shareholding data
   const processShareholdingData = (data: any): ShareholdingData[] => {
-    if (!data || !data.shareholding) return [];
+    if (!data || !Array.isArray(data.shareholding)) return [];
     
-    // This is a simplified version - adjust based on actual API response structure
-    return [
-      { name: 'Promoters', value: 45 },
-      { name: 'FIIs', value: 25 },
-      { name: 'DIIs', value: 15 },
-      { name: 'Public', value: 15 }
-    ];
+    // Map display names to more user-friendly names
+    const displayNameMap: Record<string, string> = {
+      'Promoter': 'Promoters',
+      'FII': 'Foreign Institutional Investors (FIIs)',
+      'MF': 'Domestic Institutional Investors (DIIs)',
+      'Other': 'Public & Others'
+    };
+    
+    return data.shareholding.map((item: any) => {
+      // Get the latest value (first item in categories array)
+      const latestValue = item.categories && item.categories[0] 
+        ? parseFloat(item.categories[0].percentage) 
+        : 0;
+      
+      return {
+        name: displayNameMap[item.displayName] || item.displayName,
+        value: latestValue
+      };
+    });
   };
 
-    // Fetch widget data
-    const { data, isLoading, error, refetch, isRefetching } = useQuery({
-      queryKey: ["widget", widget.id, "indianapi", widget.selectedApiKeyId],
-      queryFn: async () => {
-        if (!widget.apiEndpoint) return null;
+  // Process news data
+  const processNewsData = (data: any): NewsItem[] => {
+    if (!data || !Array.isArray(data.recentNews)) return [];
+    
+    return data.recentNews.map((news: any) => ({
+      id: news.id,
+      headline: news.headline,
+      summary: news.summary || "No summary available",
+      date: news.date,
+      source: "Livemint",
+      url: news.url
+    }));
+  };
 
-        // Determine API Key
-        let apiKeyValue = "";
-        
-        // 1. Try to get from secure storage (keys list)
-        if (keys && widget.selectedApiKeyId) {
-             const foundKey = keys.find(k => k.id === widget.selectedApiKeyId);
-             if (foundKey) apiKeyValue = foundKey.key;
-        }
+  // Process risk meter data
+  const processRiskMeterData = (data: any) => {
+    if (!data) return null;
+    
+    // Calculate risk score from analyst ratings
+    const analystView = data.analystView || [];
+    const recosBar = data.recosBar || {};
+    const riskMeter = data.riskMeter || {};
+    
+    let riskScore = riskMeter.stdDev || 25.49;
+    const categoryName = riskMeter.categoryName || "Balanced risk";
+    
+    // Adjust based on analyst ratings
+    if (recosBar.meanValue) {
+      const meanValue = parseFloat(recosBar.meanValue);
+      if (meanValue < 2) riskScore -= 10;
+      else if (meanValue < 3) riskScore -= 5;
+      else if (meanValue > 4) riskScore += 10;
+    }
+    
+    return {
+      riskScore: Math.max(0, Math.min(100, riskScore)),
+      categoryName,
+      stdDev: riskMeter.stdDev,
+      analystRatings: analystView,
+      meanRating: recosBar.meanValue,
+      totalAnalysts: recosBar.noOfRecommendations
+    };
+  };
 
-        // 2. If not found in storage, try to extract from URL (legacy/baked-in config)
-        let fetchUrl = widget.apiEndpoint;
-        if (!apiKeyValue) {
-            try {
-                const urlObj = new URL(fetchUrl);
-                const urlKey = urlObj.searchParams.get('apikey') || urlObj.searchParams.get('api_key') || urlObj.searchParams.get('key');
-                if (urlKey) apiKeyValue = urlKey;
-            } catch (e) {
-                // Fallback regex extraction
-                const match = fetchUrl.match(/[?&](?:apikey|api_key|key)=([^&]+)/);
-                if (match) apiKeyValue = match[1];
-            }
-        }
+  // Process analyst ratings
+  const processAnalystRatings = (data: any): AnalystRating[] => {
+    if (!data || !Array.isArray(data.analystView)) return [];
+    
+    return data.analystView.map((rating: any) => ({
+      name: rating.ratingName,
+      value: parseInt(rating.numberOfAnalystsLatest) || 0,
+      color: rating.colorCode,
+      ratingValue: rating.ratingValue
+    })).filter((rating: AnalystRating) => rating.name !== "Total");
+  };
 
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        };
+  // Fetch widget data
+  const { data: fetchData, isLoading, error, refetch, isRefetching } = useQuery({
+    queryKey: ["widget", widget.id, "indianapi", widget.selectedApiKeyId],
+    queryFn: async () => {
+      if (!widget.apiEndpoint) return null;
 
-        // Add correct header
-        if (apiKeyValue) {
-          headers['X-Api-Key'] = apiKeyValue;
-        }
+      // Determine API Key
+      let apiKeyValue = "";
+      
+      // 1. Try to get from secure storage (keys list)
+      if (keys && widget.selectedApiKeyId) {
+           const foundKey = keys.find(k => k.id === widget.selectedApiKeyId);
+           if (foundKey) apiKeyValue = foundKey.key;
+      }
 
-        // Always clean the URL to prevent double sending or security exposure
-        try {
-            const urlObj = new URL(fetchUrl);
-            urlObj.searchParams.delete('apikey');
-            urlObj.searchParams.delete('api_key');
-            urlObj.searchParams.delete('key');
-            fetchUrl = urlObj.toString();
-        } catch (e) {
-            console.error('Error cleaning URL:', e);
-            fetchUrl = fetchUrl.replace(/[?&](apikey|api_key|key)=[^&]+/, '');
-        }
+      // 2. If not found in storage, try to extract from URL (legacy/baked-in config)
+      let fetchUrl = widget.apiEndpoint;
+      if (!apiKeyValue) {
+          try {
+              const urlObj = new URL(fetchUrl);
+              const urlKey = urlObj.searchParams.get('apikey') || urlObj.searchParams.get('api_key') || urlObj.searchParams.get('key');
+              if (urlKey) apiKeyValue = urlKey;
+          } catch (e) {
+              // Fallback regex extraction
+              const match = fetchUrl.match(/[?&](?:apikey|api_key|key)=([^&]+)/);
+              if (match) apiKeyValue = match[1];
+          }
+      }
 
-        console.log('Fetching IndianAPI:', { url: fetchUrl, hasHeaderKey: !!headers['X-Api-Key'] });
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
 
-        const res = await fetch(fetchUrl, { 
-          headers,
-          method: 'GET'
-        });
-        
-        const responseText = await res.text();
-        
-        if (!res.ok) {
-            console.error('IndianAPI Error:', responseText);
-            throw new Error(`HTTP ${res.status}: ${responseText || 'Unknown error'}`);
-        }
-        
-        try {
-          return JSON.parse(responseText);
-        } catch (e) {
-          throw new Error('Invalid JSON response from IndianAPI');
-        }
-      },
-      enabled: !!keys || !widget.selectedApiKeyId,
-      refetchInterval: (widget.refreshInterval || 300) * 1000,
-    });
+      // Add correct header
+      if (apiKeyValue) {
+        headers['X-Api-Key'] = apiKeyValue;
+      }
 
-  const companyName = data ? data.companyName : getCompanyNameFromUrl(widget.apiEndpoint);
-  const tickerId = data?.tickerId || "N/A";
+      // Always clean the URL to prevent double sending or security exposure
+      try {
+          const urlObj = new URL(fetchUrl);
+          urlObj.searchParams.delete('apikey');
+          urlObj.searchParams.delete('api_key');
+          urlObj.searchParams.delete('key');
+          fetchUrl = urlObj.toString();
+      } catch (e) {
+          console.error('Error cleaning URL:', e);
+          fetchUrl = fetchUrl.replace(/[?&](apikey|api_key|key)=[^&]+/, '');
+      }
+
+      const res = await fetch(fetchUrl, { 
+        headers,
+        method: 'GET'
+      });
+      
+      const responseText = await res.text();
+      
+      if (!res.ok) {
+          console.error('IndianAPI Error:', responseText);
+          throw new Error(`HTTP ${res.status}: ${responseText || 'Unknown error'}`);
+      }
+      
+      try {
+        const parsedData = JSON.parse(responseText);
+        setLastRefreshed(new Date());
+        return parsedData;
+      } catch (e) {
+        throw new Error('Invalid JSON response from IndianAPI');
+      }
+    },
+    enabled: !propData && (!!keys || !widget.selectedApiKeyId), // Only fetch if we don't have pre-fetched data
+    refetchInterval: (widget.refreshInterval || 300) * 1000,
+  });
+
+  // Use pre-fetched data if available, otherwise use fetched data
+  const data = propData || fetchData;
+
+  // Extract data from API response
+  const companyName = data?.companyName || getCompanyNameFromUrl(widget.apiEndpoint);
+  const tickerId = data?.companyProfile?.exchangeCodeBse || "N/A";
   const industry = data?.industry || "N/A";
   const currentPrice = data?.currentPrice || {};
   const bsePrice = parseFloat(currentPrice.BSE) || 0;
@@ -243,12 +335,17 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
   const yearHigh = parseFloat(data?.yearHigh) || 0;
   const yearLow = parseFloat(data?.yearLow) || 0;
   
-  const technicalData = data ? processTechnicalData(data) : [];
-  const peerData = data ? processPeerData(data) : [];
-  const financialMetrics = data ? processFinancialMetrics(data) : null;
-  const shareholdingData = data ? processShareholdingData(data) : [];
+  // Process all widget data
+  const technicalData = processTechnicalData(data);
+  const peerData = processPeerData(data);
+  const financialMetrics = processFinancialMetrics(data);
+  const shareholdingData = processShareholdingData(data);
+  const newsData = processNewsData(data);
+  const riskMeterData = processRiskMeterData(data);
+  const analystRatings = processAnalystRatings(data);
 
-  if (isLoading && !data) {
+  // Update loading condition to check if we have pre-fetched data
+  if ((isLoading && !data) && !propData) {
     return (
       <div className={cn("flex h-full w-full items-center justify-center bg-card p-4 rounded-lg border", className)}>
         <Loader2 className="animate-spin h-6 w-6 text-muted-foreground" />
@@ -279,7 +376,7 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
 
   // Render different widget types
   const renderWidget = () => {
-    switch (config.widgetType) {
+    switch (widgetTypeToRender) {
       case "priceCard":
         return renderPriceCard();
       case "financialMetrics":
@@ -410,7 +507,7 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
                 <span className="text-xs font-medium text-muted-foreground">Revenue</span>
               </div>
               <div className="text-lg font-semibold">
-                ₹{(financialMetrics.revenue / 1000).toFixed(1)}K Cr
+                ₹{(financialMetrics.revenue / 100000).toFixed(1)}L Cr
               </div>
             </div>
             <div className="bg-green-500/10 p-3 rounded-lg">
@@ -419,7 +516,7 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
                 <span className="text-xs font-medium text-muted-foreground">Net Income</span>
               </div>
               <div className="text-lg font-semibold">
-                ₹{(financialMetrics.netIncome / 1000).toFixed(1)}K Cr
+                ₹{(financialMetrics.netIncome / 100000).toFixed(1)}L Cr
               </div>
             </div>
           </div>
@@ -429,19 +526,19 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
             <div className="text-center p-2 bg-muted/20 rounded">
               <div className="text-xs text-muted-foreground">Gross Margin</div>
               <div className="text-sm font-semibold">
-                {((financialMetrics.grossProfit / financialMetrics.revenue) * 100).toFixed(1)}%
+                {financialMetrics.revenue > 0 ? ((financialMetrics.grossProfit / financialMetrics.revenue) * 100).toFixed(1) : '0'}%
               </div>
             </div>
             <div className="text-center p-2 bg-muted/20 rounded">
               <div className="text-xs text-muted-foreground">Op Margin</div>
               <div className="text-sm font-semibold">
-                {((financialMetrics.operatingIncome / financialMetrics.revenue) * 100).toFixed(1)}%
+                {financialMetrics.revenue > 0 ? ((financialMetrics.operatingIncome / financialMetrics.revenue) * 100).toFixed(1) : '0'}%
               </div>
             </div>
             <div className="text-center p-2 bg-muted/20 rounded">
               <div className="text-xs text-muted-foreground">Net Margin</div>
               <div className="text-sm font-semibold">
-                {((financialMetrics.netIncome / financialMetrics.revenue) * 100).toFixed(1)}%
+                {financialMetrics.revenue > 0 ? ((financialMetrics.netIncome / financialMetrics.revenue) * 100).toFixed(1) : '0'}%
               </div>
             </div>
           </div>
@@ -501,51 +598,45 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
         <div className="h-full flex flex-col">
           <div className="flex-1 min-h-0 relative">
             <div className="absolute inset-0">
-              {technicalData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={technicalData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(100, 116, 139, 0.1)" />
-                    <XAxis 
-                      dataKey="days" 
-                      fontSize={10}
-                      tickFormatter={(value: number) => `${value}D`}
-                      tick={{ fill: 'rgb(100, 116, 139)' }}
-                    />
-                    <YAxis 
-                      fontSize={10}
-                      tickFormatter={(value: number) => `₹${value}`}
-                      tick={{ fill: 'rgb(100, 116, 139)' }}
-                    />
-                    <Tooltip 
-                      formatter={(value: number | undefined, name: string | undefined) => [`₹${Number(value || 0).toFixed(2)}`, 'Price']}
-                      labelFormatter={(label: any) => `Period: ${label} days`}
-                      contentStyle={{ fontSize: '11px' }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="bsePrice" 
-                      stroke="#3b82f6" 
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                      activeDot={{ r: 4 }}
-                      name="BSE Price"
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="nsePrice" 
-                      stroke="#10b981" 
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                      activeDot={{ r: 4 }}
-                      name="NSE Price"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center bg-muted/10 rounded border border-dashed text-xs text-muted-foreground">
-                  No stock data available
-                </div>
-              )}
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={technicalData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(100, 116, 139, 0.1)" />
+                  <XAxis 
+                    dataKey="days" 
+                    fontSize={10}
+                    tickFormatter={(value: number) => `${value}D`}
+                    tick={{ fill: 'rgb(100, 116, 139)' }}
+                  />
+                  <YAxis 
+                    fontSize={10}
+                    tickFormatter={(value: number) => `₹${value}`}
+                    tick={{ fill: 'rgb(100, 116, 139)' }}
+                  />
+                  <Tooltip 
+                    formatter={(value: number | undefined) => [`₹${Number(value || 0).toFixed(2)}`, 'Price']}
+                    labelFormatter={(label: any) => `Period: ${label} days`}
+                    contentStyle={{ fontSize: '11px' }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="bsePrice" 
+                    stroke="#3b82f6" 
+                    strokeWidth={2}
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 4 }}
+                    name="BSE Price"
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="nsePrice" 
+                    stroke="#10b981" 
+                    strokeWidth={2}
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 4 }}
+                    name="NSE Price"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           </div>
           
@@ -555,19 +646,27 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">5D Avg</span>
-                <span className="font-semibold">₹{technicalData.find((d: TechnicalDataPoint) => d.days === 5)?.bsePrice.toFixed(2) || '--'}</span>
+                <span className="font-semibold">
+                  ₹{technicalData.find((d: TechnicalDataPoint) => d.days === 5)?.bsePrice.toFixed(2) || '--'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">10D Avg</span>
+                <span className="font-semibold">
+                  ₹{technicalData.find((d: TechnicalDataPoint) => d.days === 10)?.bsePrice.toFixed(2) || '--'}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">20D Avg</span>
-                <span className="font-semibold">₹{technicalData.find((d: TechnicalDataPoint) => d.days === 20)?.bsePrice.toFixed(2) || '--'}</span>
+                <span className="font-semibold">
+                  ₹{technicalData.find((d: TechnicalDataPoint) => d.days === 20)?.bsePrice.toFixed(2) || '--'}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">50D Avg</span>
-                <span className="font-semibold">₹{technicalData.find((d: TechnicalDataPoint) => d.days === 50)?.bsePrice.toFixed(2) || '--'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">200D Avg</span>
-                <span className="font-semibold">₹{technicalData.find((d: TechnicalDataPoint) => d.days === 300)?.bsePrice.toFixed(2) || '--'}</span>
+                <span className="font-semibold">
+                  ₹{technicalData.find((d: TechnicalDataPoint) => d.days === 50)?.bsePrice.toFixed(2) || '--'}
+                </span>
               </div>
             </div>
           </div>
@@ -637,8 +736,9 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
                   <span>P/E: {peer.peRatio.toFixed(1)}</span>
                   <span className={cn(
                     "px-1 rounded",
-                    peer.rating === "Bullish" ? "bg-green-500/10 text-green-600" :
+                    peer.rating === "Bullish" || peer.rating === "Strong Buy" ? "bg-green-500/10 text-green-600" :
                     peer.rating === "Moderately Bullish" ? "bg-yellow-500/10 text-yellow-600" :
+                    peer.rating === "Moderately Bearish" ? "bg-red-500/10 text-red-600" :
                     "bg-gray-500/10 text-gray-600"
                   )}>
                     {peer.rating}
@@ -766,21 +866,21 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
         </button>
       </div>
 
-      {data.recentNews && Array.isArray(data.recentNews) && data.recentNews.length > 0 ? (
+      {newsData.length > 0 ? (
         <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-          {data.recentNews.slice(0, 5).map((news: any, index: number) => (
-            <div key={index} className="p-3 border rounded-lg hover:bg-muted/10 transition-colors">
+          {newsData.slice(0, 5).map((news: NewsItem) => (
+            <div key={news.id} className="p-3 border rounded-lg hover:bg-muted/10 transition-colors">
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   <h4 className="text-sm font-medium line-clamp-2 mb-1">
-                    {news.title || 'News Update'}
+                    {news.headline.replace(/&amp;/g, '&')}
                   </h4>
                   <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                    {news.description || 'No description available.'}
+                    {news.summary}
                   </p>
                   <div className="flex justify-between text-[10px] text-muted-foreground">
-                    <span>{news.source || 'Source'}</span>
-                    <span>{news.date ? format(new Date(news.date), 'MMM dd') : 'Recent'}</span>
+                    <span>{news.source || 'Livemint'}</span>
+                    <span>{format(new Date(news.date), 'MMM dd, yyyy')}</span>
                   </div>
                 </div>
               </div>
@@ -797,70 +897,112 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
     </>
   );
 
-  const renderRiskMeter = () => (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-sm font-medium text-muted-foreground">{widget.title || `${companyName} - Risk Assessment`}</h3>
-          <div className="flex items-center gap-2 mt-1">
-            <Shield className="h-3 w-3 text-yellow-500" />
-            <span className="text-xs text-muted-foreground">Risk Analysis</span>
-          </div>
-        </div>
-        <button 
-          onClick={() => refetch()} 
-          className={cn("text-muted-foreground hover:text-primary transition-all", isRefetching ? "animate-spin opacity-100" : "opacity-0 group-hover:opacity-100")}
-        >
-          <RefreshCw className="h-3 w-3" />
-        </button>
-      </div>
+  const renderRiskMeter = () => {
+    const riskScore = riskMeterData?.riskScore ?? 65;
+    const categoryName = riskMeterData?.categoryName || 'Moderate Risk';
 
-      <div className="space-y-4">
-        {/* Risk Score */}
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-linear-to-br from-yellow-500/20 to-red-500/20 border-4 border-yellow-500/30 mb-2">
-            <span className="text-xl font-bold">65</span>
+    return (
+      <>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground">{widget.title || `${companyName} - Risk Assessment`}</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <Shield className="h-3 w-3 text-yellow-500" />
+              <span className="text-xs text-muted-foreground">Risk Analysis</span>
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground">Overall Risk Score</div>
-          <div className="text-xs font-medium text-yellow-600">Moderate Risk</div>
+          <button 
+            onClick={() => refetch()} 
+            className={cn("text-muted-foreground hover:text-primary transition-all", isRefetching ? "animate-spin opacity-100" : "opacity-0 group-hover:opacity-100")}
+          >
+            <RefreshCw className="h-3 w-3" />
+          </button>
         </div>
 
-        {/* Risk Factors */}
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-muted-foreground">Risk Factors</h4>
-          <div className="space-y-1">
-            {[
-              { label: 'Market Risk', value: 70, color: 'bg-red-500' },
-              { label: 'Credit Risk', value: 40, color: 'bg-yellow-500' },
-              { label: 'Liquidity Risk', value: 30, color: 'bg-green-500' },
-              { label: 'Operational Risk', value: 60, color: 'bg-orange-500' }
-            ].map((risk, index) => (
-              <div key={index} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span>{risk.label}</span>
-                  <span>{risk.value}%</span>
-                </div>
-                <div className="h-1 bg-muted rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full ${risk.color}`}
-                    style={{ width: `${risk.value}%` }}
-                  />
-                </div>
+        <div className="space-y-4">
+          {/* Risk Score */}
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-linear-to-br from-yellow-500/20 to-red-500/20 border-4 border-yellow-500/30 mb-2">
+              <span className="text-xl font-bold">{riskScore}</span>
+            </div>
+            <div className="text-xs text-muted-foreground">Overall Risk Score</div>
+            <div className={cn(
+              "text-xs font-medium",
+              riskScore < 30 ? "text-green-600" :
+              riskScore < 60 ? "text-yellow-600" : "text-red-600"
+            )}>
+              {categoryName}
+            </div>
+          </div>
+
+          {/* Analyst Ratings */}
+          {analystRatings.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold text-muted-foreground">Analyst Ratings</h4>
+              <div className="space-y-1">
+                {analystRatings.map((rating: AnalystRating, index: number) => (
+                  <div key={index} className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span>{rating.name}</span>
+                      <span>{rating.value} analysts</span>
+                    </div>
+                    <div className="h-1 bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className="h-full rounded-full"
+                        style={{ 
+                          width: `${(rating.value / analystRatings.reduce((sum: number, r: AnalystRating) => sum + r.value, 0)) * 100}%`,
+                          backgroundColor: rating.color || '#6b7280'
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+          )}
+
+          {/* Risk Factors */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold text-muted-foreground">Risk Factors</h4>
+            <div className="space-y-1">
+              {([
+                { label: 'Market Risk', value: riskMeterData?.stdDev || 70, color: 'bg-red-500' },
+                { label: 'Credit Risk', value: 40, color: 'bg-yellow-500' },
+                { label: 'Liquidity Risk', value: 30, color: 'bg-green-500' },
+                { label: 'Operational Risk', value: 60, color: 'bg-orange-500' }
+              ]).map((risk, index) => (
+                <div key={index} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span>{risk.label}</span>
+                    <span>{risk.value}%</span>
+                  </div>
+                  <div className="h-1 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full ${risk.color}`}
+                      style={{ width: `${risk.value}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Risk Recommendations */}
+          <div className="p-3 bg-yellow-500/5 rounded-lg border border-yellow-500/20">
+            <div className="text-xs font-semibold text-yellow-600 mb-1">Recommendation</div>
+            <p className="text-xs text-muted-foreground">
+              {riskScore < 30 
+                ? "Low risk profile. Suitable for conservative investors."
+                : riskScore < 60
+                ? "Moderate risk. Monitor debt levels and commodity price fluctuations closely."
+                : "High risk. Consider diversification and consult financial advisor."
+              }
+            </p>
           </div>
         </div>
-
-        {/* Risk Recommendations */}
-        <div className="p-3 bg-yellow-500/5 rounded-lg border border-yellow-500/20">
-          <div className="text-xs font-semibold text-yellow-600 mb-1">Recommendation</div>
-          <p className="text-xs text-muted-foreground">
-            Monitor debt levels and commodity price fluctuations closely. Consider diversification.
-          </p>
-        </div>
-      </div>
-    </>
-  );
+      </>
+    );
+  };
 
   const renderShareholding = () => (
     <>
@@ -885,39 +1027,36 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
           {/* Pie Chart Visualization */}
           <div className="flex-1 min-h-0 relative">
             <div className="absolute inset-0">
-              {shareholdingData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={shareholdingData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={30}
-                      outerRadius={50}
-                      paddingAngle={2}
-                      dataKey="value"
-                      nameKey="name"
-                    >
-                      {shareholdingData.map((entry: ShareholdingData, index: number) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={[
-                            '#3b82f6', // Promoters - Blue
-                            '#10b981', // FIIs - Green
-                            '#f59e0b', // DIIs - Yellow
-                            '#8b5cf6'  // Public - Purple
-                          ][index % 4]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number | undefined) => [`${value || 0}%`, 'Holding']} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center bg-muted/10 rounded border border-dashed text-xs text-muted-foreground">
-                  No stock data available
-                </div>
-              )}
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={shareholdingData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={30}
+                    outerRadius={50}
+                    paddingAngle={2}
+                    dataKey="value"
+                    nameKey="name"
+                  >
+                    {shareholdingData.map((entry: ShareholdingData, index: number) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={[
+                          '#3b82f6', // Promoters - Blue
+                          '#10b981', // FIIs - Green
+                          '#f59e0b', // DIIs - Yellow
+                          '#8b5cf6'  // Public - Purple
+                        ][index % 4]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value: number | undefined) => [`${value || 0}%`, 'Holding']}
+                    contentStyle={{ fontSize: '11px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
@@ -941,7 +1080,7 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
                     />
                     <span>{item.name}</span>
                   </div>
-                  <span className="font-semibold">{item.value}%</span>
+                  <span className="font-semibold">{item.value.toFixed(1)}%</span>
                 </div>
               ))}
             </div>
@@ -951,13 +1090,13 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
           <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t">
             <div className="text-center p-1 bg-blue-500/5 rounded">
               <div className="text-blue-600 font-semibold">
-                {shareholdingData.find((s: ShareholdingData) => s.name === 'Promoters')?.value || 0}%
+                {shareholdingData.find((s: ShareholdingData) => s.name.includes('Promoters'))?.value.toFixed(1) || 0}%
               </div>
               <div className="text-muted-foreground">Promoter</div>
             </div>
             <div className="text-center p-1 bg-green-500/5 rounded">
               <div className="text-green-600 font-semibold">
-                {shareholdingData.find((s: ShareholdingData) => s.name === 'FIIs')?.value || 0}%
+                {shareholdingData.find((s: ShareholdingData) => s.name.includes('FII'))?.value.toFixed(1) || 0}%
               </div>
               <div className="text-muted-foreground">FIIs</div>
             </div>
@@ -983,7 +1122,7 @@ export default function IndianAPIWidget({ widget, className, widgetType }: India
             <span>IndianAPI</span>
           </span>
           <span>
-            {lastRefreshed ? `Updated: ${lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Never refreshed'}
+            {lastRefreshed ? `Updated: ${lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Loading...'}
           </span>
         </div>
       </div>

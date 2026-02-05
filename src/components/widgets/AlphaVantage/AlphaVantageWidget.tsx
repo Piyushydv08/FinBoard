@@ -113,12 +113,16 @@ export default function AlphaVantageWidget({ widget, className }: AlphaVantageWi
             if (!res.ok) throw new Error("Failed to fetch stock data");
             
             const result = await res.json();
+            console.log('Aplha Vantage:', result);
             // Check for Alpha Vantage error messages
             if (result["Error Message"]) {
                 throw new Error(result["Error Message"]);
             }
             if (result["Note"]) {
                 throw new Error("API rate limit exceeded. Please try again later.");
+            }
+            if (result["Information"]) {
+                throw new Error(result["Information"]);
             }
             
             setLastRefreshed(new Date());

@@ -53,7 +53,11 @@ export default function FinnhubWidget({ widget, className }: FinnhubWidgetProps)
             // Build the request using the shared helper
             const { url, headers } = buildRequest(widget.apiEndpoint, apiKey);
 
-            const res = await fetch(url, { headers });
+            // Remove Content-Type for GET requests to avoid CORS preflight issues
+            const fetchHeaders = { ...headers };
+            delete fetchHeaders['Content-Type'];
+
+            const res = await fetch(url, { headers: fetchHeaders });
             if (!res.ok) throw new Error("Failed to fetch stock data");
             
             const result = await res.json();

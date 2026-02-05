@@ -140,6 +140,10 @@ export default function WidgetWizard({ onSave, onCancel }: WidgetWizardProps) {
             const { url, headers } = buildRequest(apiEndpoint, keyObj);
 
             let fetchHeaders = headers;
+            if (selectedKey && selectedKey.provider === "Finnhub") {
+                fetchHeaders = { ...headers };
+                delete fetchHeaders['Content-Type'];
+            }
             if (selectedKey && selectedKey.provider === "IndianAPI") {
                 const apiKey = selectedKey.key || process.env.INDIANAPI_API_KEY || '';
                 fetchHeaders = { ...headers, 'X-Api-Key': apiKey };
@@ -202,32 +206,44 @@ export default function WidgetWizard({ onSave, onCancel }: WidgetWizardProps) {
         onSave(newWidget);
     };
 
-    const handleIndianAPIWidgetsSelect = (widgets: Array<{ type: string; config: any }>) => {
-        setIndianAPIWidgets(widgets);
-        setIsIndianAPIPreview(false);
-        
-        // Create a widget for each selected widget type
-        widgets.forEach((widgetConfig, index) => {
+    const handleIndianAPIWidgetsSelect = async (widgets: Array<{ type: string; config: any }>) => {
+    setIndianAPIWidgets(widgets);
+    setIsIndianAPIPreview(false);
+    
+    try {
+        // Create and save all widgets
+        const savePromises = widgets.map((widgetConfig) => {
             const widgetId = uuidv4();
             const widgetTitle = `${indianName} - ${widgetConfig.config.title}`;
             
+            // Create proper IndianAPI widget with specific configuration
             const newWidget: WidgetConfig = {
                 id: widgetId,
                 title: widgetTitle,
-                type: "card", // IndianAPI widgets are special cards
+                type: "card", // Set as a special type
                 apiEndpoint: apiEndpoint,
                 selectedApiKeyId: selectedKeyId,
                 refreshInterval: refreshInterval,
-                dataMapping: {},
+                dataMapping: {
+                    // Store IndianAPI specific configuration
+                    indianAPIWidgetType: widgetConfig.type, // priceCard, financialMetrics, etc.
+                    indianAPIConfig: widgetConfig.config,
+                    companyName: indianName,
+                },
             };
             
-            // Save each widget individually
-            onSave(newWidget);
+            return onSave(newWidget);
         });
         
-        // Close the wizard after creating all widgets
+        await Promise.all(savePromises);
         onCancel();
-    };
+    } catch (error) {
+        console.error("Failed to save widgets:", error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        setFetchError(`Failed to save widgets: ${message}`);
+    }
+};
+
 
     const handlePathSelect = (path: string) => {
         if (activeMappingField) {

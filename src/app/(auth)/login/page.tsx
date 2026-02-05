@@ -2,11 +2,11 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
-import { app } from "@/lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase"; // Import the auth instance directly
 import { LayoutDashboard } from "lucide-react";
 
 export default function LoginPage() {
@@ -21,12 +21,37 @@ export default function LoginPage() {
         e.preventDefault();
         setLoading(true);
         setError("");
+
         try {
-            const auth = getAuth(app);
+            // Use the imported auth instance directly
             await signInWithEmailAndPassword(auth, email, password);
             router.push("/dashboard");
         } catch (err: any) {
-            setError(err.message);
+            console.error("Login error:", err);
+
+            // Better error messages
+            switch (err.code) {
+                case "auth/invalid-email":
+                    setError("Invalid email address");
+                    break;
+                case "auth/user-disabled":
+                    setError("This account has been disabled");
+                    break;
+                case "auth/user-not-found":
+                    setError("No account found with this email");
+                    break;
+                case "auth/wrong-password":
+                    setError("Incorrect password");
+                    break;
+                case "auth/too-many-requests":
+                    setError("Too many failed attempts. Please try again later");
+                    break;
+                case "auth/network-request-failed":
+                    setError("Network error. Please check your connection");
+                    break;
+                default:
+                    setError("Failed to sign in. Please try again");
+            }
         } finally {
             setLoading(false);
         }

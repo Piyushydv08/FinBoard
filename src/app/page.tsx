@@ -21,7 +21,7 @@ export default function Home() {
                     Monitor your assets, track markets, and manage your API keys securely.
                 </p>
 
-                <div className="flex flex-col sm:flex-row gap-4 w-full max-w-sm">
+                <div className="flex flex-col sm:flex-row gap-4 w-full max-w-sm justify-center">
                     <Link
                         href="/login"
                         className="flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-4 md:py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary/90 text-base min-h-11"
